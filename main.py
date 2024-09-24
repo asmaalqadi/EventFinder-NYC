@@ -42,8 +42,8 @@ def scrape_do_nyc(date):
         link = event.find('a', class_='ds-listing-event-title')['href'] if event.find('a', class_='ds-listing-event-title') else 'No Link Available'
         full_link = f"{BASE_URL_DO_NYC}{link}" if 'http' not in link else link
         events.append({
-            'name': title,
-            'url': full_link
+            'Event Name': title,
+            'Link for Event': full_link
         })
     return events
 
