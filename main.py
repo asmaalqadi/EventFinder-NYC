@@ -10,9 +10,9 @@ load_dotenv()
 
 # API Key from .env 
 TICKETMASTER_API_KEY = os.getenv('TICKETMASTER_API_KEY')
-BASE_URL_DO_NYC = "https://donyc.com"
+BASE_URL_DO_NYC = "https://donyc.com" # Taking the main url since it's adaptable
 
-# Searchies for events via Ticketmaster API on a given date
+# Searches for events via Ticketmaster API on a given date
 def search_events_from_ticketmaster(date):
     # Adjusted for potential timezone offset by starting from midnight of the given day
     start_date_str = datetime.combine(date, datetime.min.time()) + timedelta(hours=12)  # noon of the day to avoid time zone issues
@@ -20,30 +20,33 @@ def search_events_from_ticketmaster(date):
     start_date_iso = start_date_str.isoformat() + 'Z'
     end_date_iso = end_date_str.isoformat() + 'Z'
     
-    url = f"https://app.ticketmaster.com/discovery/v2/events.json?apikey={TICKETMASTER_API_KEY}&startDateTime={start_date_iso}&endDateTime={end_date_iso}&countryCode=US"
+    url = f"https://app.ticketmaster.com/discovery/v2/events.json?apikey={TICKETMASTER_API_KEY}&startDateTime={start_date_iso}&endDateTime={end_date_iso}&countryCode=US&city=New%20York"
     response = requests.get(url)
     if response.status_code == 200 and '_embedded' in response.json():
         events = response.json()['_embedded']['events']
-        return [{'Event Name': event['name'], 'Link for Event': event['url']} for event in events]
+        # Filtering for events in New York City
+        nyc_events = [event for event in events if 'New York' in event.get('_embedded', {}).get('venues', [{}])[0].get('city', {}).get('name', '')]
+        return [{'Event Name': event['name'], 'Link for Event': event['url']} for event in nyc_events]
     else:
         print(f"Error searching events from Ticketmaster: {response.status_code}, Response: {response.text}")
         return []
     
 # Scrapes the 'Do NYC' website for events on a given date
 def scrape_do_nyc(date):
-    date_str = date.strftime('%Y/%m/%d')  # Adjust to match 'Do NYC' date format in URL
-    url = f"{BASE_URL_DO_NYC}/events/{date_str}"
+    date_str = date.strftime('%Y/%m/%d') # Making the date format same as the website
+    url = f"{BASE_URL_DO_NYC}/events/{date_str}" # adding date to the base link
     response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    soup = BeautifulSoup(response.content, 'html.parser') # parsing html into a beautifulSoup object
     
     events = []
     for event in soup.find_all('div', class_='ds-listing event-card ds-event-category-music'):
+        # Extracting the title and link  and adding them to the events list 
         title = event.find('span', class_='ds-listing-event-title-text').text.strip() if event.find('span', class_='ds-listing-event-title-text') else 'No Title Available'
         link = event.find('a', class_='ds-listing-event-title')['href'] if event.find('a', class_='ds-listing-event-title') else 'No Link Available'
-        full_link = f"{BASE_URL_DO_NYC}{link}" if 'http' not in link else link
+        full_link = f"{BASE_URL_DO_NYC}{link}" if 'http' not in link else link 
         events.append({
             'Event Name': title,
-            'Link for Event': full_link
+            'Link for Event': full_link 
         })
     return events
 
