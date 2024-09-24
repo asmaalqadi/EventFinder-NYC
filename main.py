@@ -12,7 +12,7 @@ load_dotenv()
 TICKETMASTER_API_KEY = os.getenv('TICKETMASTER_API_KEY')
 BASE_URL_DO_NYC = "https://donyc.com" # Taking the main url since it's adaptable
 
-# Searches for events via Ticketmaster API on a given date
+# Searching for events via Ticketmaster API on a given date
 def search_events_from_ticketmaster(date):
     # Adjusted for potential timezone offset by starting from midnight of the given day
     start_date_str = datetime.combine(date, datetime.min.time()) + timedelta(hours=12)  # noon of the day to avoid time zone issues
@@ -24,36 +24,52 @@ def search_events_from_ticketmaster(date):
     response = requests.get(url)
     if response.status_code == 200 and '_embedded' in response.json():
         events = response.json()['_embedded']['events']
-        # Filtering for events in New York City
-        nyc_events = [event for event in events if 'New York' in event.get('_embedded', {}).get('venues', [{}])[0].get('city', {}).get('name', '')]
-        return [{'Event Name': event['name'], 'Link for Event': event['url']} for event in nyc_events]
+        # Use the .get() method to safely access 'name' and 'url'
+        return [{
+            'Event Name': event.get('name', 'No Event Name Available'),  # Default if 'name' is missing
+            'Link for Event': event.get('url', 'No URL Available')  # Default if 'url' is missing
+        } for event in events]
     else:
         print(f"Error searching events from Ticketmaster: {response.status_code}, Response: {response.text}")
         return []
     
 # Scrapes the 'Do NYC' website for events on a given date
 def scrape_do_nyc(date):
+    categories = ['music', 'comedy', 'food-wine-dining', 'film']
     date_str = date.strftime('%Y/%m/%d') # Making the date format same as the website
     url = f"{BASE_URL_DO_NYC}/events/{date_str}" # adding date to the base link
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser') # parsing html into a beautifulSoup object
     
     events = []
-    for event in soup.find_all('div', class_='ds-listing event-card ds-event-category-music'):
-        # Extracting the title and link  and adding them to the events list 
-        title = event.find('span', class_='ds-listing-event-title-text').text.strip() if event.find('span', class_='ds-listing-event-title-text') else 'No Title Available'
-        link = event.find('a', class_='ds-listing-event-title')['href'] if event.find('a', class_='ds-listing-event-title') else 'No Link Available'
-        full_link = f"{BASE_URL_DO_NYC}{link}" if 'http' not in link else link 
-        events.append({
-            'Event Name': title,
-            'Link for Event': full_link 
-        })
+    for category in categories:
+        class_selector = f'ds-listing event-card ds-event-category-{category}'
+        for event in soup.find_all('div', class_=class_selector):
+            title = event.find('span', class_='ds-listing-event-title-text').text.strip() if event.find('span', class_='ds-listing-event-title-text') else 'No Title Available'
+            link = event.find('a', class_='ds-listing-event-title')['href'] if event.find('a', class_='ds-listing-event-title') else 'No Link Available'
+            full_link = f"{BASE_URL_DO_NYC}{link}" if 'http' not in link else link
+            events.append({
+                'Event Name': title,
+                'Link for Event': full_link,
+                'Category': category  
+            })
     return events
 
+def get_most_common_category(events_df):
+    if 'Category' in events_df.columns:
+        return events_df['Category'].mode()[0]
+    return "No category data"
+
+
 def main():
-    print("Enter the date for which you want to search events (YYYY-MM-DD):")
-    date_input = input()
-    selected_date = datetime.strptime(date_input, '%Y-%m-%d')
+    while True:
+        try:
+            print("Enter the date for which you want to search events (YYYY-MM-DD):")
+            date_input = input()
+            selected_date = datetime.strptime(date_input, '%Y-%m-%d')
+            break
+        except ValueError:
+            print("Invalid date format. Please enter the date in YYYY-MM-DD format.")
     
     # Gets the  events from Ticketmaster APi
     tm_events = search_events_from_ticketmaster(selected_date)
@@ -66,8 +82,13 @@ def main():
     # Combines both dataframes into one CSV file of all events 
     combined_df = pd.concat([tm_events_df, donyc_events_df], ignore_index=True, sort=False)
     if not combined_df.empty:
-        combined_df.to_csv('combined_events.csv', index=False)
+        # Save to CSV without the 'Category' column
+        combined_df.drop(columns=['Category'], errors='ignore').to_csv('combined_events.csv', index=False)
         print("Combined events saved to 'combined_events.csv'.")
+        
+        # Determine the most common category
+        most_common_category = get_most_common_category(donyc_events_df)
+        print(f"The most common category on {selected_date.strftime('%Y-%m-%d')} is '{most_common_category}'.")
     else:
         print("No events found for the selected date.")
 
